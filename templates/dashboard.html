@@ -192,8 +192,8 @@ fetch(`/api/emotions/${username}`)
     const labels = Object.keys(data);
     const rawValues = Object.values(data);
 
-    // 🔹 Dynamically scale small values
-    let scaleFactor = 2.5; // tweak this (2–3 works best)
+    // 🔹 Scale emotion values for better visibility
+    const scaleFactor = 2.5;
     const values = rawValues.map(v => Math.min(v * scaleFactor, 1));
 
     new Chart(document.getElementById("emotionRadar"), {
@@ -205,6 +205,7 @@ fetch(`/api/emotions/${username}`)
           data: values,
           backgroundColor: "rgba(64,224,208,0.25)",
           borderColor: "#40E0D0",
+          borderWidth: 2,
           pointBackgroundColor: "#40E0D0"
         }]
       },
@@ -213,7 +214,9 @@ fetch(`/api/emotions/${username}`)
           r: {
             min: 0,
             max: 1,
-            ticks: { color: "#E0E0E0" },
+            ticks: {
+              display: false // ✅ hides the numeric values like 0.2, 0.4, etc.
+            },
             pointLabels: { color: "#E0E0E0" },
             grid: { color: "#333" },
             angleLines: { color: "#444" }
@@ -224,6 +227,7 @@ fetch(`/api/emotions/${username}`)
       }
     });
   });
+
 
   </script>
 </body>
