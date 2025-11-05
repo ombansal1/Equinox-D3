@@ -3,7 +3,72 @@
 <head>
   <title>Equinox Dashboard - {{username}}</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <style>
+    body {
+      font-family: 'Segoe UI', Tahoma, sans-serif;
+      background: #121212;
+      color: #E0E0E0;
+      margin: 20px;
+    }
+    header {
+      display: flex;
+      align-items: center;
+      gap: 15px;
+      margin-bottom: 25px;
+    }
+    header img {
+      width: 60px;
+      height: 60px;
+    }
+    header h1 {
+      margin: 0;
+      font-size: 28px;
+      color: #40E0D0;
+    }
+    header p {
+      margin: 0;
+      font-size: 14px;
+      color: #A0A0A0;
+    }
+
+    /* ===== Cards ===== */
+    .chart-card {
+      background: #1E1E1E;
+      border-radius: 10px;
+      padding: 20px;
+      margin-bottom: 25px;
+      box-shadow: 0 0 15px rgba(64, 224, 208, 0.2);
+    }
+    canvas {
+      background: #121212;
+      border-radius: 8px;
+      padding: 10px;
+    }
+
+    /* ===== Aura Card ===== */
+    .aura-card {
+      background: radial-gradient(circle at top left, #40e0d0, #1e1e1e);
+      border-radius: 15px;
+      padding: 25px;
+      text-align: center;
+      margin-bottom: 30px;
+      box-shadow: 0 0 20px rgba(64, 224, 208, 0.3);
+    }
+    .aura-card h2 {
+      color: #40E0D0;
+    }
+    .aura-card p {
+      color: #E0E0E0;
+    }
+
+    /* Forecast message */
+    #forecast-message {
+      margin-top: 15px;
+      text-align: center;
+      font-size: 16px;
+      color: #40E0D0;
+    }
+  </style>
 </head>
 <body>
   <header>
@@ -14,63 +79,46 @@
     </div>
   </header>
 
-  <!-- 🌈 Aura Section -->
-  <section class="aura-card">
-    <div class="aura-gradient" id="aura-gradient"></div>
-    <div class="aura-text">
-      <h2>Your Aura</h2>
-      <p id="aura-info">Loading your aura...</p>
-    </div>
-  </section>
+  <!-- 🌈 Aura -->
+  <div class="aura-card">
+    <h2>Your Aura</h2>
+    <p id="aura-info">Loading...</p>
+  </div>
 
   <!-- 📈 Mood Trend -->
-  <section class="chart-card">
+  <div class="chart-card">
     <h2>Mood Trend for {{username}}</h2>
-    <canvas id="moodChart"></canvas>
-  </section>
+    <canvas id="moodChart" width="800" height="300"></canvas>
+  </div>
 
-  <!-- ⚠️ Alerts -->
-  <section id="alerts">
-    <h3>⚠️ Alerts</h3>
-    <div id="alerts-list"></div>
-  </section>
+  <!-- 🔮 Forecast below Mood Trend -->
+  <div class="chart-card" id="forecast-card" style="display:none;">
+    <h2>Next 7 Days Mood Forecast</h2>
+    <canvas id="forecastChart" width="800" height="300"></canvas>
+    <p id="forecast-message"></p>
+  </div>
 
   <script>
-    // === Fetch Aura ===
-    fetch(`/api/aura/{{username}}`)
+    const username = "{{username}}";
+
+    // --- Fetch Aura ---
+    fetch(`/api/aura/${username}`)
       .then(r => r.json())
-      .then(aura => {
+      .then(data => {
         const auraDiv = document.getElementById("aura-info");
-        const gradientDiv = document.getElementById("aura-gradient");
-
-        if (!aura || aura.error) {
-          auraDiv.textContent = "Not enough data to determine your aura.";
-          gradientDiv.classList.add("default-gradient");
-          return;
+        if (!data || data.error) {
+          auraDiv.textContent = "Not enough data to determine aura.";
+        } else {
+          auraDiv.innerHTML = `<strong>${data.aura}</strong><br>${data.description}`;
         }
-
-        auraDiv.innerHTML = `<strong>${aura.aura}</strong><br>${aura.description}`;
-
-        // Map aura names to gradient classes
-        const gradientMap = {
-          "Calm Green": "calm-green",
-          "Radiant Orange": "radiant-orange",
-          "Tranquil Blue": "tranquil-blue",
-          "Stormy Gray": "stormy-gray",
-          "Blossom Pink": "blossom-pink",
-          "Bright Yellow": "bright-yellow"
-        };
-
-        const auraName = aura.aura.split(" ").slice(1).join(" ");
-        gradientDiv.classList.add(gradientMap[auraName] || "default-gradient");
       });
 
-    // === Fetch posts and mood trend ===
-    fetch(`/api/fetch/{{username}}`)
+    // --- Fetch posts + mood trend ---
+    fetch(`/api/fetch/${username}`)
       .then(r => r.json())
       .then(fetchData => {
         if (fetchData.fetched > 0) {
-          return fetch(`/api/mood_trend/{{username}}?days=60`);
+          return fetch(`/api/mood_trend/${username}?days=60`);
         } else {
           throw new Error("No posts fetched for this user.");
         }
@@ -79,7 +127,7 @@
       .then(data => {
         const trend = data.trend || [];
         if (trend.length === 0) {
-          alert("No recent posts to plot!");
+          document.body.innerHTML += "<p>No posts found to analyze.</p>";
           return;
         }
 
@@ -91,7 +139,7 @@
           data: {
             labels: labels,
             datasets: [{
-              label: "Sentiment (compound score)",
+              label: "Mood Sentiment (Daily Average)",
               data: values,
               fill: true,
               borderColor: "#40E0D0",
@@ -102,7 +150,40 @@
             }]
           },
           options: {
-            scales: { 
+            scales: {
+              y: { min: -1, max: 1, ticks: { color: "#E0E0E0" } },
+              x: { ticks: { color: "#E0E0E0" } }
+            },
+            plugins: { legend: { labels: { color: "#E0E0E0" } } }
+          }
+        });
+      })
+      .catch(err => console.error(err));
+
+    // --- Fetch Forecast (below trend) ---
+    fetch(`/api/forecast/${username}`)
+      .then(r => r.json())
+      .then(data => {
+        if (!data.forecast || data.forecast.length === 0) return;
+
+        const labels = data.forecast.map(f => f.date);
+        const values = data.forecast.map(f => f.predicted_mood);
+
+        new Chart(document.getElementById("forecastChart"), {
+          type: "line",
+          data: {
+            labels: labels,
+            datasets: [{
+              label: "Predicted Mood Score (Next 7 Days)",
+              data: values,
+              borderColor: "#FFD700",
+              backgroundColor: "rgba(255,215,0,0.15)",
+              fill: true,
+              tension: 0.3
+            }]
+          },
+          options: {
+            scales: {
               y: { min: -1, max: 1, ticks: { color: "#E0E0E0" } },
               x: { ticks: { color: "#E0E0E0" } }
             },
@@ -110,20 +191,14 @@
           }
         });
 
-        const alerts = data.alerts || [];
-        if (alerts.length > 0) {
-          const alertBox = document.getElementById("alerts");
-          const list = document.getElementById("alerts-list");
-          list.innerHTML = "";
-          alerts.forEach(a => {
-            const div = document.createElement("div");
-            div.className = "alert-item";
-            div.textContent = `${a.date}: ${a.message}`;
-            list.appendChild(div);
-          });
-          alertBox.style.display = "block";
-        }
-      });
+        const card = document.getElementById("forecast-card");
+        card.style.display = "block";
+        const msg = document.getElementById("forecast-message");
+        msg.innerHTML = data.badge
+          ? `${data.badge} — ${data.message}`
+          : `💛 ${data.message}`;
+      })
+      .catch(e => console.error("Forecast error", e));
   </script>
 </body>
 </html>
