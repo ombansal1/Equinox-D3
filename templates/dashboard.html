@@ -3,80 +3,7 @@
 <head>
   <title>Equinox Dashboard - {{username}}</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-  <style>
-    body {
-      font-family: 'Segoe UI', Tahoma, sans-serif;
-      margin: 20px;
-      background: #121212;
-      color: #E0E0E0;
-    }
-    header {
-      display: flex;
-      align-items: center;
-      gap: 15px;
-      margin-bottom: 25px;
-    }
-    header img {
-      width: 60px;
-      height: 60px;
-    }
-    header h1 {
-      margin: 0;
-      font-size: 28px;
-      color: #40E0D0;
-    }
-    header p {
-      margin: 0;
-      font-size: 14px;
-      color: #A0A0A0;
-    }
-    h2 {
-      color: #40E0D0;
-      margin-bottom: 10px;
-    }
-    #alerts {
-      margin-top: 20px;
-      padding: 12px;
-      background: rgba(64, 224, 208, 0.1);
-      border: 1px solid #40E0D0;
-      border-radius: 8px;
-      color: #40E0D0;
-      display: none;
-    }
-    .alert-item {
-      margin-bottom: 8px;
-    }
-    canvas {
-      background: #1E1E1E;
-      border-radius: 8px;
-      padding: 10px;
-    }
-    .aura-section {
-      background: #1E1E1E;
-      border-radius: 10px;
-      padding: 15px 20px;
-      margin-bottom: 25px;
-      box-shadow: 0 0 15px rgba(64, 224, 208, 0.2);
-    }
-    .aura-section h2 {
-      margin-top: 0;
-    }
-    #aura-info {
-      margin: 10px 0;
-      font-size: 16px;
-      line-height: 1.4;
-    }
-    #topics-container {
-      display: flex;
-      flex-direction: column;
-      align-items: flex-start;
-      margin-top: 20px;
-    }
-    #topicChart {
-      max-width: 400px;
-      max-height: 300px;
-    }
-  </style>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
   <header>
@@ -88,42 +15,60 @@
   </header>
 
   <!-- 🌈 Aura Section -->
-  <div class="aura-section">
-    <h2>🌈 Your Aura</h2>
-    <p id="aura-info">Loading your aura and topics...</p>
-    <div id="topics-container">
-      <canvas id="topicChart"></canvas>
+  <section class="aura-card">
+    <div class="aura-gradient" id="aura-gradient"></div>
+    <div class="aura-text">
+      <h2>Your Aura</h2>
+      <p id="aura-info">Loading your aura...</p>
     </div>
-  </div>
+  </section>
 
-  <!-- 📈 Mood Chart -->
-  <h2>Mood Trend for {{username}}</h2>
-  <canvas id="moodChart" width="800" height="300"></canvas>
+  <!-- 📊 Topic Distribution -->
+  <section class="chart-card">
+    <h2>Topic Distribution</h2>
+    <canvas id="topicChart"></canvas>
+  </section>
+
+  <!-- 📈 Mood Trend -->
+  <section class="chart-card">
+    <h2>Mood Trend for {{username}}</h2>
+    <canvas id="moodChart"></canvas>
+  </section>
 
   <!-- ⚠️ Alerts -->
-  <div id="alerts">
+  <section id="alerts">
     <h3>⚠️ Alerts</h3>
     <div id="alerts-list"></div>
-  </div>
+  </section>
 
   <script>
-    // === Step 1: Fetch aura data ===
+    // === Fetch Aura ===
     fetch(`/api/aura/{{username}}`)
       .then(r => r.json())
       .then(aura => {
         const auraDiv = document.getElementById("aura-info");
+        const gradientDiv = document.getElementById("aura-gradient");
 
         if (aura.error) {
           auraDiv.textContent = "Not enough data to determine your aura.";
+          gradientDiv.classList.add("default-gradient");
           return;
         }
 
-        // Show Aura info
-        auraDiv.innerHTML = `
-          <b>${aura.aura}</b><br>
-          ${aura.description}<br><br>
-          <i>${aura.comment}</i>
-        `;
+        auraDiv.innerHTML = `<strong>${aura.aura}</strong><br>${aura.description}<br><br><em>${aura.comment}</em>`;
+
+        // Map aura names to gradient classes
+        const gradientMap = {
+          "Calm Green": "calm-green",
+          "Radiant Orange": "radiant-orange",
+          "Tranquil Blue": "tranquil-blue",
+          "Stormy Gray": "stormy-gray",
+          "Blossom Pink": "blossom-pink",
+          "Bright Yellow": "bright-yellow"
+        };
+
+        const auraName = aura.aura.split(" ").slice(1).join(" "); // remove emoji
+        gradientDiv.classList.add(gradientMap[auraName] || "default-gradient");
 
         // Create topic chart
         const topicData = aura.topics || {};
@@ -138,28 +83,20 @@
               datasets: [{
                 data: values,
                 backgroundColor: [
-                  "#40E0D0", "#2bb5a6", "#FF914D", "#FFD700", "#A0A0A0", "#FFB6C1"
+                  "#40E0D0", "#FF914D", "#FFB6C1", "#FFD700", "#A0A0A0", "#2bb5a6"
                 ]
               }]
             },
             options: {
               plugins: {
-                legend: {
-                  labels: { color: "#E0E0E0" }
-                },
-                title: {
-                  display: true,
-                  text: "Topic Distribution",
-                  color: "#40E0D0"
-                }
+                legend: { labels: { color: "#E0E0E0" } }
               }
             }
           });
         }
-      })
-      .catch(err => console.error("Aura fetch error:", err));
+      });
 
-    // === Step 2: Fetch posts then mood trend ===
+    // === Fetch posts and mood trend ===
     fetch(`/api/fetch/{{username}}`)
       .then(r => r.json())
       .then(fetchData => {
@@ -180,7 +117,7 @@
         const labels = trend.map(d => d.date);
         const values = trend.map(d => d.avg_compound);
 
-        new Chart(document.getElementById("moodChart").getContext('2d'), {
+        new Chart(document.getElementById("moodChart"), {
           type: "line",
           data: {
             labels: labels,
@@ -200,13 +137,10 @@
               y: { min: -1, max: 1, ticks: { color: "#E0E0E0" } },
               x: { ticks: { color: "#E0E0E0" } }
             },
-            plugins: { 
-              legend: { labels: { color: "#E0E0E0" } }
-            }
+            plugins: { legend: { labels: { color: "#E0E0E0" } } }
           }
         });
 
-        // === Step 3: Alerts ===
         const alerts = data.alerts || [];
         if (alerts.length > 0) {
           const alertBox = document.getElementById("alerts");
@@ -220,10 +154,6 @@
           });
           alertBox.style.display = "block";
         }
-      })
-      .catch(err => {
-        console.error(err);
-        alert("Error loading posts or mood trend.");
       });
   </script>
 </body>
