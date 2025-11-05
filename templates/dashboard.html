@@ -23,12 +23,6 @@
     </div>
   </section>
 
-  <!-- 📊 Topic Distribution -->
-  <section class="chart-card">
-    <h2>Topic Distribution</h2>
-    <canvas id="topicChart"></canvas>
-  </section>
-
   <!-- 📈 Mood Trend -->
   <section class="chart-card">
     <h2>Mood Trend for {{username}}</h2>
@@ -49,13 +43,13 @@
         const auraDiv = document.getElementById("aura-info");
         const gradientDiv = document.getElementById("aura-gradient");
 
-        if (aura.error) {
+        if (!aura || aura.error) {
           auraDiv.textContent = "Not enough data to determine your aura.";
           gradientDiv.classList.add("default-gradient");
           return;
         }
 
-        auraDiv.innerHTML = `<strong>${aura.aura}</strong><br>${aura.description}<br><br><em>${aura.comment}</em>`;
+        auraDiv.innerHTML = `<strong>${aura.aura}</strong><br>${aura.description}`;
 
         // Map aura names to gradient classes
         const gradientMap = {
@@ -67,33 +61,8 @@
           "Bright Yellow": "bright-yellow"
         };
 
-        const auraName = aura.aura.split(" ").slice(1).join(" "); // remove emoji
+        const auraName = aura.aura.split(" ").slice(1).join(" ");
         gradientDiv.classList.add(gradientMap[auraName] || "default-gradient");
-
-        // Create topic chart
-        const topicData = aura.topics || {};
-        const labels = Object.keys(topicData);
-        const values = Object.values(topicData);
-
-        if (labels.length > 0) {
-          new Chart(document.getElementById("topicChart"), {
-            type: "pie",
-            data: {
-              labels: labels,
-              datasets: [{
-                data: values,
-                backgroundColor: [
-                  "#40E0D0", "#FF914D", "#FFB6C1", "#FFD700", "#A0A0A0", "#2bb5a6"
-                ]
-              }]
-            },
-            options: {
-              plugins: {
-                legend: { labels: { color: "#E0E0E0" } }
-              }
-            }
-          });
-        }
       });
 
     // === Fetch posts and mood trend ===

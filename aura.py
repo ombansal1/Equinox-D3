@@ -1,23 +1,13 @@
-
 # aura.py
+import re
 import numpy as np
 from sentence_transformers import SentenceTransformer
 from sklearn.cluster import KMeans
-import re
 
 # --- Load model once globally for efficiency ---
 model = SentenceTransformer('all-MiniLM-L6-v2')
 
-# --- Keyword dictionaries for topic detection ---
-TOPIC_KEYWORDS = {
-    "work": ["job", "office", "manager", "project", "work"],
-    "relationships": ["friend", "love", "partner", "family", "relationship"],
-    "health": ["doctor", "tired", "sleep", "health", "pain", "exercise"],
-    "study": ["school", "college", "study", "exam", "assignment"],
-    "gratitude": ["thank", "grateful", "blessed", "appreciate"],
-    "self-image": ["confidence", "anxiety", "feel", "myself", "mental"]
-}
-
+# --- Aura mapping (Spotify-style colors + meaning) ---
 AURA_MAP = {
     0: ("🌿 Calm Green", "Reflective and grounded — you often express thoughtfulness."),
     1: ("🔥 Radiant Orange", "Energetic and expressive — your posts show high engagement."),
@@ -27,53 +17,48 @@ AURA_MAP = {
     5: ("🌞 Bright Yellow", "Optimistic and uplifting — your tone reflects positivity.")
 }
 
+# --- Text cleaning helper ---
 def preprocess(text):
+    if not text:
+        return ""
     text = text.lower()
     text = re.sub(r"http\S+", "", text)
-    return text
+    text = re.sub(r"\[removed\]|\[deleted\]", "", text)
+    text = re.sub(r"[^a-z0-9\s.,!?']", " ", text)
+    return re.sub(r"\s+", " ", text).strip()
 
-def topic_distribution(texts):
-    counts = {t: 0 for t in TOPIC_KEYWORDS}
-    total = 0
-    for t in texts:
-        total += 1
-        text = preprocess(t)
-        for topic, keywords in TOPIC_KEYWORDS.items():
-            if any(k in text for k in keywords):
-                counts[topic] += 1
-    if total == 0:
-        return counts
-    return {k: round(v / total * 100, 1) for k, v in counts.items()}
-
+# --- Main Aura Analysis Function ---
 def analyze_aura(posts):
-    """Given list of posts, returns aura, description, and topic insight."""
+    """Given list of posts, returns aura and description."""
     if not posts:
-        return None
+        return {
+            "aura": "🌊 Tranquil Blue",
+            "description": "Balanced and introspective — calm tone with positive reflections.",
+        }
 
     texts = [p["text"] for p in posts if p["text"].strip()]
     if len(texts) < 1:
         return {
-    "aura": "🌊 Tranquil Blue",
-    "description": "Balanced and introspective — calm tone with positive reflections.",
-    "topics": {},
-    "comment": "Not enough posts for a full analysis yet."
-}
+            "aura": "🌊 Tranquil Blue",
+            "description": "Balanced and introspective — calm tone with positive reflections.",
+        }
 
-
+    # === Step 1: Generate embeddings ===
     embeddings = model.encode(texts, show_progress_bar=False)
-    kmeans = KMeans(n_clusters=6, random_state=42, n_init=10)
-    clusters = kmeans.fit_predict(embeddings)
 
-    user_cluster = int(np.argmax(np.bincount(clusters)))
-    aura_color, aura_desc = AURA_MAP.get(user_cluster, ("🌊 Tranquil Blue", "Balanced mood."))
+    # === Step 2: Cluster posts into 6 auras ===
+    try:
+        kmeans = KMeans(n_clusters=6, random_state=42, n_init=10)
+        clusters = kmeans.fit_predict(embeddings)
+        user_cluster = int(np.argmax(np.bincount(clusters)))
+    except Exception:
+        user_cluster = 2  # fallback to Tranquil Blue
 
-    topics = topic_distribution(texts)
-    top_topic = max(topics, key=topics.get)
-    comment = f"You talk about {top_topic} {topics[top_topic]}% of the time."
+    aura_color, aura_desc = AURA_MAP.get(
+        user_cluster, ("🌊 Tranquil Blue", "Balanced and introspective.")
+    )
 
     return {
         "aura": aura_color,
         "description": aura_desc,
-        "topics": topics,
-        "comment": comment
     }
