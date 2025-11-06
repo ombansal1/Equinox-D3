@@ -6,51 +6,24 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <style>
-    :root {
-      --bg: #121212;
-      --panel: #1e1e1e;
-      --ink: #e0e0e0;
-      --muted: #a0a0a0;
-      --teal: #40E0D0;
-    }
+    :root { --bg:#121212; --panel:#1e1e1e; --ink:#e0e0e0; --muted:#a0a0a0; --teal:#40E0D0; }
     * { box-sizing: border-box; }
-    body {
-      margin: 0; padding: 28px;
-      background: var(--bg); color: var(--ink);
-      font-family: "Segoe UI", Tahoma, sans-serif;
-    }
-    h1 {
-      font-size: 36px; margin: 0 0 18px 0;
-      color: #6fb1ab; letter-spacing: .5px;
-      text-shadow: 0 0 12px rgba(64,224,208,.18);
-    }
-    .grid {
-      display: grid;
-      grid-template-columns: 320px 1fr 1.1fr;
-      gap: 24px;
-    }
-    .card {
-      background: var(--panel);
-      border-radius: 18px;
-      padding: 18px 20px;
-      box-shadow: 0 0 22px rgba(64,224,208,.16);
-    }
-    .tall { min-height: 560px; }
-    .pill { display: inline-block; padding: 6px 12px; border-radius: 999px; font-size: 12px; color: var(--bg); background: var(--teal); }
-    .title { margin: 0 0 10px 0; color: var(--teal); letter-spacing:.3px; }
-    .aura-chip {
-      background: radial-gradient(120% 120% at 0% 0%, #40e0d0 0%, #1e1e1e 70%);
-      border-radius: 16px; padding: 18px; margin: 10px 0 14px 0;
-      box-shadow: 0 0 18px rgba(64,224,208,.28);
-    }
-    .muted { color: var(--muted); }
-    .list { margin: 8px 0 0 0; padding-left: 18px; }
-    .warn { background: rgba(255, 120, 120, .14); border: 1px solid rgba(255,120,120,.4); }
-    .ok { background: rgba(64, 224, 208, .12); border: 1px solid rgba(64,224,208,.35); }
-    .section-title { font-weight: 700; margin: 8px 0 6px 0; color:#cfeae8 }
-    .block { background:#151515; border:1px solid #2a2a2a; border-radius: 14px; padding: 12px 14px; margin-top: 10px; }
-    canvas { width: 100% !important; height: 320px !important; background: #0f0f0f; border-radius: 12px; padding: 8px; }
-    @media (max-width: 1100px) { .grid { grid-template-columns: 1fr; } .tall { min-height: auto; } }
+    body { margin:0; padding:28px; background:var(--bg); color:var(--ink); font-family:"Segoe UI", Tahoma, sans-serif; }
+    h1 { font-size:36px; margin:0 0 18px 0; color:#6fb1ab; letter-spacing:.5px; text-shadow:0 0 12px rgba(64,224,208,.18); }
+    .grid { display:grid; grid-template-columns:320px 1fr 1.1fr; gap:24px; }
+    .card { background:var(--panel); border-radius:18px; padding:18px 20px; box-shadow:0 0 22px rgba(64,224,208,.16); }
+    .tall { min-height:560px; }
+    .pill { display:inline-block; padding:6px 12px; border-radius:999px; font-size:12px; color:var(--bg); background:var(--teal); }
+    .title { margin:0 0 10px 0; color:var(--teal); letter-spacing:.3px; }
+    .aura-chip { background: radial-gradient(120% 120% at 0% 0%, #40e0d0 0%, #1e1e1e 70%); border-radius:16px; padding:18px; margin:10px 0 14px 0; box-shadow:0 0 18px rgba(64,224,208,.28); }
+    .muted { color:var(--muted); }
+    .list { margin:8px 0 0 0; padding-left:18px; }
+    .warn { background: rgba(255,120,120,.14); border:1px solid rgba(255,120,120,.4); }
+    .ok { background: rgba(64,224,208,.12); border:1px solid rgba(64,224,208,.35); }
+    .section-title { font-weight:700; margin:8px 0 6px 0; color:#cfeae8 }
+    .block { background:#151515; border:1px solid #2a2a2a; border-radius:14px; padding:12px 14px; margin-top:10px; }
+    canvas { width:100% !important; height:320px !important; background:#0f0f0f; border-radius:12px; padding:8px; }
+    @media (max-width:1100px) { .grid { grid-template-columns:1fr; } .tall { min-height:auto; } }
   </style>
 </head>
 <body>
@@ -66,14 +39,10 @@
       </div>
 
       <div class="section-title">Insight</div>
-      <div class="block">
-        {{quick_insight}}
-      </div>
+      <div class="block">{{quick_insight}}</div>
 
       <div class="section-title">Session prep — summary of trends</div>
-      <div class="block">
-        {{trend_summary}}
-      </div>
+      <div class="block">{{trend_summary}}</div>
     </div>
 
     <!-- MIDDLE: Stacked area BERT trend + session tips -->
@@ -124,16 +93,37 @@
   </div>
 
   <script>
-    // ---- Stacked area chart (BERT emotion evolution) ----
+    // ---- Stacked area chart (BERT emotion evolution) with exponent boosting ----
     const labels = {{ trend_labels|tojson }};
     const series = {{ trend_series|tojson }};
+    const GAMMA = 0.6; // 0.4–0.8 works well; 1 = no boost
+
+    // v' = v^gamma; re-normalize per day so stacks = 1
+    function gammaBoostSeries(s, gamma) {
+      if (!s || Object.keys(s).length === 0) return s;
+      const keys = Object.keys(s);
+      const len = s[keys[0]]?.length || 0;
+      const out = {};
+      keys.forEach(k => out[k] = new Array(len).fill(0));
+      for (let i = 0; i < len; i++) {
+        const col = keys.map(k => Math.max(0, Number(s[k][i] || 0)));
+        const boosted = col.map(v => Math.pow(v, gamma));
+        const sum = boosted.reduce((a,b) => a + b, 0) || 1;
+        keys.forEach((k, idx) => { out[k][i] = +(boosted[idx] / sum).toFixed(4); });
+      }
+      return out;
+    }
+
+    const boosted = gammaBoostSeries(series, GAMMA);
+
     const palette = [
       "#6dd3c1", "#8aa9ff", "#ffb14d", "#ff799a",
       "#93e85b", "#ffd86b", "#c289ff", "#7ad3ff"
     ];
-    const datasets = Object.keys(series).map((k, i) => ({
+
+    const datasets = Object.keys(boosted).map((k, i) => ({
       label: k,
-      data: series[k],
+      data: boosted[k],
       borderColor: palette[i % palette.length],
       backgroundColor: palette[i % palette.length] + "44",
       fill: true,
@@ -151,7 +141,11 @@
         stacked: true,
         plugins: {
           legend: { labels: { color: "#e0e0e0" } },
-          tooltip: { callbacks: { label: (ctx) => `${ctx.dataset.label}: ${ctx.formattedValue}` } }
+          tooltip: {
+            callbacks: {
+              label: (ctx) => `${ctx.dataset.label}: ${ctx.formattedValue}`
+            }
+          }
         },
         scales: {
           x: { stacked: true, ticks: { color: "#c9c9c9" }, grid:{color:"#2a2a2a"} },

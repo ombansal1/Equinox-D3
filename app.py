@@ -12,7 +12,7 @@ from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
 from ingest import scrape_subreddits, load_cached_df
 from aura import analyze_aura
 from nlp_bert import analyze_emotions, emotion_analyzer  # reuse loaded HF pipeline
-from personality import analyze_big5  # NEW helper module for Big Five heuristic
+from personality import analyze_big5  # Big Five heuristic
 
 # --- CONFIG ---
 REDDIT_CLIENT_ID = "M1I1jvc74xBb2xr-QuK2zQ"
@@ -22,7 +22,7 @@ REDDIT_USER_AGENT = "wellness-tracker-demo"
 # --- APP INIT ---
 app = Flask(__name__)
 analyzer = SentimentIntensityAnalyzer()
-user_posts = {}  # in-memory cache per username for the dashboard
+user_posts = {}  # in-memory cache per username for the user dashboard
 
 # --- Reddit Init ---
 def init_reddit():
@@ -42,7 +42,7 @@ def preprocess_text(text: str) -> str:
     text = re.sub(r"\s+", " ", text).strip()
     return text
 
-# --- Fetch Reddit Posts for a Specific User (used by dashboard) ---
+# --- Fetch Reddit Posts for a Specific User (dashboard + live patient fallback) ---
 def fetch_user_submissions(username, limit=100):
     reddit = init_reddit()
     ruser = reddit.redditor(username)
@@ -154,7 +154,7 @@ def _assess_risks(texts, vader_avg, emo_daily_series):
     kw_ptsd    = ["flashback", "nightmare", "trauma", "abuse", "assault", "intrusive", "hypervigilant"]
     kw_schizo  = ["voices", "hallucination", "paranoid", "delusion", "thought broadcasting", "schizophrenia"]
 
-    def score_keywords(kws): 
+    def score_keywords(kws):
         return sum(1 for k in kws if k in corpus)
 
     # emotion proportions - last day (if available)
@@ -216,37 +216,48 @@ def therapist_dashboard():
 def patient_detail(author):
     """
     Therapist insights page for a single Reddit author.
-    - Aura (KMeans over sentence embeddings)
-    - Stacked area emotion trend (BERT)
-    - Big-Five heuristic
-    - Risk flags (Depression/Anxiety/PTSD/Schizophrenia/Suicidal)
-    - Session prep tips + trend summary
+    If author not found in cached CSV, fetch fresh posts live from Reddit.
     """
     df = load_cached_df()
-    if df.empty or "author" not in df.columns:
-        return render_template(
-            "patient_detail.html",
-            author=author,
-            aura={"aura": "(no data)", "description": "Scrape first."},
-            big5={"openness": 0, "conscientiousness": 0, "extraversion": 0, "agreeableness": 0, "neuroticism": 0},
-            risks={"depression": "low", "anxiety": "low", "ptsd": "low", "schizophrenia": "low", "suicidal": "low"},
-            trend_labels=[], trend_series={}, trend_summary="No data yet.",
-            quick_insight="No cached posts found.",
-            session_tips=["Collect a fresh batch of posts."]
-        )
+    user_df = pd.DataFrame()
 
-    user_df = df[df["author"] == author].copy()
+    if not df.empty and "author" in df.columns:
+        user_df = df[df["author"].str.lower() == author.lower()]
+
+    # Fallback: live fetch if not in cache
     if user_df.empty:
-        return render_template(
-            "patient_detail.html",
-            author=author,
-            aura={"aura": "(no data)", "description": "No posts for this user in cache."},
-            big5={"openness": 0, "conscientiousness": 0, "extraversion": 0, "agreeableness": 0, "neuroticism": 0},
-            risks={"depression": "low", "anxiety": "low", "ptsd": "low", "schizophrenia": "low", "suicidal": "low"},
-            trend_labels=[], trend_series={}, trend_summary="No posts in cache.",
-            quick_insight="Try scraping again.",
-            session_tips=["Gather more recent posts (past 30–60 days)."]
-        )
+        try:
+            print(f"⚡ Fetching live Reddit data for {author} ...")
+            posts = fetch_user_submissions(author, limit=200)
+            if not posts:
+                return render_template(
+                    "patient_detail.html",
+                    author=author,
+                    aura={"aura": "(no data)", "description": "No public posts found for this user."},
+                    big5={"openness": 0, "conscientiousness": 0, "extraversion": 0, "agreeableness": 0, "neuroticism": 0},
+                    risks={"depression": "low", "anxiety": "low", "ptsd": "low", "schizophrenia": "low", "suicidal": "low"},
+                    trend_labels=[], trend_series={}, trend_summary="No data available.",
+                    quick_insight="This Reddit user has no recent posts or profile is private.",
+                    session_tips=["Ask user to engage or share reflections to analyze trends."]
+                )
+            # Build DataFrame on the fly
+            user_df = pd.DataFrame(posts)
+            user_df["created_utc"] = user_df["created"].apply(lambda x: x.timestamp())
+            # quick VADER if not present
+            if "vader_compound" not in user_df.columns:
+                user_df["vader_compound"] = user_df["text"].map(lambda t: analyzer.polarity_scores(t)["compound"])
+        except Exception as e:
+            print(f"❌ Error fetching live data: {e}")
+            return render_template(
+                "patient_detail.html",
+                author=author,
+                aura={"aura": "(error)", "description": "Unable to fetch data."},
+                big5={"openness": 0, "conscientiousness": 0, "extraversion": 0, "agreeableness": 0, "neuroticism": 0},
+                risks={"depression": "low", "anxiety": "low", "ptsd": "low", "schizophrenia": "low", "suicidal": "low"},
+                trend_labels=[], trend_series={}, trend_summary="Error fetching data.",
+                quick_insight=f"Failed to fetch Reddit data for {author}.",
+                session_tips=["Retry after a few minutes or verify username spelling."]
+            )
 
     # Prepare texts & dates
     text_col = (user_df["title"].fillna("") + " " + user_df.get("text", "").fillna("")).str.strip()
@@ -259,7 +270,7 @@ def patient_detail(author):
     # Daily stacked emotion trend
     trend_labels, trend_series = _analyze_emotion_trend(texts[:120], dates[:120])
 
-    # VADER average (from cached df if present)
+    # VADER average (from df or quick calc)
     vader_avg = float(user_df.get("vader_compound", pd.Series([0])).astype(float).mean())
 
     # Big Five heuristic (0-100)
@@ -282,18 +293,18 @@ def patient_detail(author):
     # Session tips
     tips = []
     if risks.get("suicidal") == "high":
-        tips.append("Assess safety first; ask direct questions about intent, plan, means; provide crisis resources.")
+        tips.append("Assess safety first; ask about intent, plan, means; provide crisis resources.")
     if risks.get("depression") in ("moderate", "high"):
-        tips.append("Screen for MDD; explore sleep, appetite, anhedonia; introduce behavioral activation.")
+        tips.append("Screen for MDD; explore sleep, appetite, anhedonia.")
     if risks.get("anxiety") in ("moderate", "high"):
         tips.append("Use grounding/breathing; identify triggers; consider CBT psychoeducation.")
     if risks.get("ptsd") in ("moderate", "high"):
         tips.append("Check trauma history and avoidance; stabilize before trauma processing.")
     if risks.get("schizophrenia") in ("moderate", "high"):
-        tips.append("Clarify reality-testing issues (hallucinations/delusions); consider psychiatric referral.")
+        tips.append("Clarify reality-testing issues; consider psychiatric referral.")
     if not tips:
-        tips.append("Build rapport; reinforce strengths from positive/neutral periods; set session goals.")
-    tips.append("Validate emotions reflected in recent posts and agree on a small between-session action.")
+        tips.append("Build rapport; reinforce strengths from positive/neutral periods.")
+    tips.append("Validate emotions reflected in recent posts and set session goals.")
 
     return render_template(
         "patient_detail.html",
@@ -325,7 +336,7 @@ def therapist_search():
         .rename(columns={"title": "post_count"})
         .reset_index()
     )
-    # Dummy placeholder dominant emotion
+    # Dummy placeholder dominant emotion (can replace with real later)
     patients["dominant_emotion"] = [
         "happy" if i % 3 == 0 else "sad" if i % 3 == 1 else "calm"
         for i in range(len(patients))
