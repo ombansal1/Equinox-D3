@@ -347,7 +347,7 @@ def therapist_search():
     if emotion_filter:
         patients = patients[patients["dominant_emotion"].str.lower() == emotion_filter]
 
-    result = patients.head(50).to_dict("records")
+    result = patients.head(250).to_dict("records")
     return jsonify({"patients": result, "count": len(result)})
 
 # =========================
