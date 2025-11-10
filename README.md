@@ -1,8 +1,3 @@
-Got it ✅ — here’s a **complete, professional, copy-paste-ready `README.md`** for your **Equinox – Health & Wellness App** project by **Om Bansal**.
-It’s styled for GitHub and already includes sections for overview, setup, workflow, tech stack, and usage.
-
----
-
 ## 🧘‍♂️ **Equinox – AI-Powered Health & Wellness Analyzer**
 
 > *“Balancing minds, one insight at a time.”*
